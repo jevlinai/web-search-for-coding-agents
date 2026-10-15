@@ -88,7 +88,10 @@ def main(argv: list[str]) -> int:
         return 0
     load_environment()
     started = time.perf_counter()
-    hits, error, meta = run_search(arm, query, max_results)
+    try:
+        hits, error, meta = run_search(arm, query, max_results)
+    except Exception as exc:  # noqa: BLE001 — any failure is a recorded, shown error hop, never a crash
+        hits, error, meta = [], f"{type(exc).__name__}: {exc}", {}
     latency_ms = int((time.perf_counter() - started) * 1000)
     stats = harness_search.hit_text_stats(hits)
     hit_urls = [str(h.get("url") or "") for h in hits if h.get("url")] or list(meta.get("hit_urls") or [])
