@@ -6,4 +6,4 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PY="${PYTHON:-}"
 [ -z "$PY" ] && { [ -x .venv/bin/python ] && PY=.venv/bin/python || PY=python3; }
-PYTHONPATH=scripts exec "$PY" scripts/jevlin_bench/preflight.py
+PYTHONPATH=scripts exec "$PY" scripts/jevlin_bench/preflight.py "$@"   # --agent claude-code for the subscription runner

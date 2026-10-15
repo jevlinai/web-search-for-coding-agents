@@ -171,10 +171,39 @@ def cli_check() -> None:
         len(result.get("merged") or []), envelope.get("mining"), envelope.get("error")))
 
 
+def claude_code_check() -> bool:
+    """The Claude Code agent (cc_run.py) bills the subscription; what matters is the stored login."""
+    import json as _json
+
+    exe = subprocess.run(["sh", "-c", "command -v claude"], capture_output=True, text=True, check=False).stdout.strip() or "claude"
+    env = {"HOME": os.environ.get("HOME", ""), "USER": os.environ.get("USER", ""), "PATH": "/usr/bin:/bin:" + os.path.dirname(exe), "TERM": "xterm", "DISABLE_AUTOUPDATER": "1"}
+    try:
+        version = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=30, check=False, env=env).stdout.strip()
+        status = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, timeout=30, check=False, env=env).stdout
+        data = _json.loads(status) if status.strip().startswith("{") else {}
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        print("claude-code: check failed:", type(exc).__name__)
+        return False
+    print("claude-code: %s loggedIn=%s authMethod=%s subscription=%s" % (
+        version, data.get("loggedIn"), data.get("authMethod"), data.get("subscriptionType")))
+    if not data.get("loggedIn"):
+        print("  FAILED: Claude Code is not logged in; run `claude` interactively and /login")
+        return False
+    if data.get("authMethod") not in ("claude.ai",):
+        print("  WARNING: the login is not a claude.ai subscription; headless runs would bill an API key")
+    return True
+
+
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="pre-flight before a paid run")
+    parser.add_argument("--agent", choices=("api", "claude-code"), default=os.environ.get("BENCH_AGENT", "api"),
+                        help="api: the harness loop (checks the model key); claude-code: cc_run.py (checks the subscription login)")
+    args = parser.parse_args()
     load_environment()
     shadow_check()
-    ok = model_check()
+    ok = claude_code_check() if args.agent == "claude-code" else model_check()
     limits_check()
     tier_checks()
     cli_check()
