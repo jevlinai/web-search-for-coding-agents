@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Prepare the jevlin_cli arm: a released jevlin binary and a benchmark-only client config.
 #
-#   experiments/jevlin-cli/setup.sh build  [JEVLIN_GO_DIR] [REF]   # builds REF (default v0.1.0) into runs/bin/jevlin
+#   experiments/jevlin-cli/setup.sh release [TAG]                  # installs the published release (default v0.2.0),
+#                                                                  # checksum-verified, into runs/bin/jevlin — what users run
+#   experiments/jevlin-cli/setup.sh build  [JEVLIN_GO_DIR] [REF]   # builds REF from source instead (no release asset)
 #   experiments/jevlin-cli/setup.sh config                         # writes runs/jevlin-cli/jevlin.toml + state (mining off)
 #
 # The config points the client at $JEVLIN_API_URL (same host as the HTTP arms); the key comes
@@ -15,6 +17,24 @@ BIN="$ROOT/runs/bin/jevlin"
 HOME_DIR="$ROOT/runs/jevlin-cli"
 
 case "${1:-}" in
+  release)
+    TAG="${2:-v0.2.0}"
+    VER="${TAG#v}"
+    OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    ARCH="$(uname -m)"; case "$ARCH" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; esac
+    ASSET="jevlin_${VER}_${OS}_${ARCH}.tar.gz"
+    WORK="$(mktemp -d)"
+    gh release download "$TAG" -R jevlinai/jevlin-go -p "$ASSET" -p checksums.txt -D "$WORK" --clobber
+    (cd "$WORK" && grep " $ASSET\$" checksums.txt | shasum -a 256 -c -)
+    tar -xzf "$WORK/$ASSET" -C "$WORK"
+    SRC="$(find "$WORK" -type f -name jevlin -perm -u+x | head -1)"
+    mkdir -p "$(dirname "$BIN")"
+    cp "$SRC" "$BIN" && chmod +x "$BIN"
+    echo "installed $BIN from release $TAG ($ASSET, checksum verified)"
+    "$BIN" version
+    shasum -a 256 "$BIN"
+    rm -rf "$WORK"
+    ;;
   build)
     JEVLIN_GO_DIR="${2:-$HOME/Github/jevlin-go}"
     REF="${3:-v0.1.0}"

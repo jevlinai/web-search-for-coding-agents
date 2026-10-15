@@ -36,11 +36,12 @@ DATASETS_ROOT=datasets PYTHONPATH=scripts python -m coding_search selftest
 PYTHONPATH=scripts python -m unittest coding_search.test_jevlin coding_search.test_jevlin_e2e
 ```
 
-For `jevlin_cli`, the client gets its own benchmark config and the released
-binary; nothing under `~/.jevlin` is used or changed:
+For `jevlin_cli`, the client gets its own benchmark config and the published
+release binary (checksum-verified; `build` exists for a commit without an
+asset); nothing under `~/.jevlin` is used or changed:
 
 ```bash
-experiments/jevlin-cli/setup.sh build ~/Github/jevlin-go v0.1.0   # -> runs/bin/jevlin
+experiments/jevlin-cli/setup.sh release v0.2.0                     # -> runs/bin/jevlin, what users install
 JEVLIN_API_URL=https://api.jevlin.ai experiments/jevlin-cli/setup.sh config
 # append the two printed lines (JEVLIN_CLI_CONFIG=..., JEVLIN_BIN=...) to .env
 ```
@@ -50,7 +51,11 @@ exported by the operator's shell cannot redirect it (python-dotenv never
 overrides a variable the shell already set, which is why the arm has its own
 variable). The CLI reads the key from `JEVLIN_API_KEY` in the environment, so it
 searches as the same bench account as the HTTP arms; mining is disabled
-through the client's own `state/mining_decision.json`.
+through the client's own `state/mining_decision.json`. Since 0.2.0 the client
+resolves a tier the request did not name from the user's `jevlin agents tier`
+file, then `[miner] tier`, then nothing; the bench config sets neither, so the
+arm carries no tier and the router applies the account default, which is what
+a user who has not chosen a band gets.
 
 Before any paid run, record what the server resolves each tier to (four tiny
 searches):
