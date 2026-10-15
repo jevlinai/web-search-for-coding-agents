@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -12,11 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from .agent import DEFAULT_MODEL, run_agent
-from .env import datasets_root, llm_transport, load_environment, make_llm_client
+from .env import datasets_root, default_model, llm_transport, load_environment, make_llm_client
 from .judge import extract_code, hop_retrieved_text, hop_urls, score_needles
 from .rawlog import new_run_stamp, parse_run_stamp, write_arm_raw
 from .search import (
     BACKENDS,
+    DEFAULT_MAX_RESULTS,
     FETCH_FORBIDDEN,
     FETCH_REQUIRED,
     SEARCH_FETCH_BACKENDS,
@@ -117,6 +119,7 @@ def run_arm(
     dataset: str = "",
     split: str = "",
     run_stamp: str = "",
+    max_results: int = DEFAULT_MAX_RESULTS,
 ) -> dict[str, Any]:
     label = arm_label(backend, allow_fetch)
     with eval_span(task_id=task.id, backend=label, model=model, experiment_id=experiment_id) as arm:
@@ -128,6 +131,7 @@ def run_arm(
             max_turns=max_turns or task.max_turns,
             max_searches=max_searches or task.max_searches,
             max_fetches=0 if not allow_fetch else (max_fetches or task.max_fetches),
+            max_results=max_results,
             system=PATCH_SYSTEM if allow_fetch else PATCH_SYSTEM_SEARCH_ONLY,
             allow_search=True,
             allow_fetch=allow_fetch,
@@ -310,10 +314,22 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     run.add_argument("--fetch-mode", default=None, choices=("on", "off", "both"))
-    run.add_argument("--model", default=DEFAULT_MODEL)
+    run.add_argument("--model", default=None, help=f"default {DEFAULT_MODEL}, or the Claude default when LLM_PROVIDER=anthropic")
     run.add_argument("--max-turns", type=int, default=32)
     run.add_argument("--max-searches", type=int, default=5)
     run.add_argument("--max-fetches", type=int, default=5)
+    run.add_argument(
+        "--max-results",
+        type=int,
+        default=DEFAULT_MAX_RESULTS,
+        help="Hits shown to the model per search, for every backend (default 8). A sensitivity knob, not a board setting.",
+    )
+    run.add_argument(
+        "--shuffle-seed",
+        type=int,
+        default=None,
+        help="Shuffle the (task, backend) job order with this seed so no vendor runs in one block of time.",
+    )
     run.add_argument("--concurrency", type=int, default=1)
     run.add_argument("--dataset", default="", choices=("", "private", "public"), help="Braintrust project: web-coding-private or web-coding-public.")
     run.add_argument(
@@ -336,6 +352,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     load_environment()
+    if args.cmd == "run" and not args.model:
+        args.model = default_model()
     if args.cmd == "selftest":
         return selftest()
     if args.cmd == "ensure-projects":
@@ -401,6 +419,8 @@ def main(argv: list[str] | None = None) -> int:
         "concurrency": args.concurrency,
         "max_searches": args.max_searches,
         "max_fetches": args.max_fetches,
+        "max_results": args.max_results,
+        "shuffle_seed": args.shuffle_seed,
         "vendors": [vendor_slug(item) for item in backends],
         "run_stamp": run_stamp,
     }
@@ -428,6 +448,8 @@ def main(argv: list[str] | None = None) -> int:
         for backend in backends
         for allow_fetch in fetch_modes
     ]
+    if args.shuffle_seed is not None:
+        random.Random(args.shuffle_seed).shuffle(jobs)
     workers = max(1, args.concurrency)
     print(
         f"braintrust={'on' if logger else 'off'} experiment={experiment_id} "
@@ -462,6 +484,7 @@ def main(argv: list[str] | None = None) -> int:
                 dataset=dataset,
                 split=split,
                 run_stamp=run_stamp,
+                max_results=args.max_results,
             )
         except Exception as exc:  # noqa: BLE001
             return failed_arm(task, backend=backend, allow_fetch=allow_fetch, exc=exc)
@@ -506,6 +529,8 @@ def main(argv: list[str] | None = None) -> int:
         "fetch_mode": args.fetch_mode,
         "model": args.model,
         "concurrency": workers,
+        "max_results": args.max_results,
+        "shuffle_seed": args.shuffle_seed,
         "raw_dir": str(raw_dir) if raw_dir else None,
         "run_stamp": run_stamp if raw_dir else None,
         "results": results,

@@ -1,0 +1,16 @@
+{
+  "_note": "USD per search for the direct arms, used only to ESTIMATE direct-vendor search cost in analyze.py. List prices as published on the vendors' pricing pages; each includes up to 10 results per request, which covers the harness's 8. Jevlin arms are never priced from this file; the gateway reports what each search cost.",
+  "_filled_on": "2026-10-15",
+  "_sources": {
+    "exa_fast": "https://exa.ai/pricing — Search API, Fast/Auto: $7 per 1k requests (Instant $4, Deep $12)",
+    "parallel_fast": "https://parallel.ai/pricing — Search API, Fast: $1 per 1k requests with 10 results (Basic/Advanced $5)",
+    "perplexity_low": "https://docs.perplexity.ai/docs/getting-started/pricing — Search API: $5 per 1k requests (Fast Search $1); the harness calls /search, the standard Search API"
+  },
+  "usd_per_search": {
+    "exa_fast": 0.007,
+    "exa_instant": 0.004,
+    "parallel_fast": 0.001,
+    "parallel_turbo": 0.001,
+    "perplexity_low": 0.005
+  }
+}

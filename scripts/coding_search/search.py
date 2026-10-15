@@ -1425,3 +1425,13 @@ def get_backend(name: str) -> SearchBackend:
         known = ", ".join(sorted(set(resolve_backend(item) for item in BACKENDS)))
         raise KeyError(f"unknown search backend {name!r}; wired now: {known}")
     return factory()
+
+
+# Jevlin (benchmark fork). A multi-provider gateway; search-only. The arms and
+# what each measures are documented in jevlin.py. Registered here, after the
+# roster, so the module above is unchanged from upstream.
+from . import jevlin as _jevlin  # noqa: E402
+
+BACKENDS.update(_jevlin.BACKENDS)
+SEARCH_ONLY_BACKENDS = (*SEARCH_ONLY_BACKENDS, *_jevlin.SEARCH_ONLY)
+FETCH_FORBIDDEN = frozenset(SEARCH_ONLY_BACKENDS) - DUAL_SPLIT_BACKENDS

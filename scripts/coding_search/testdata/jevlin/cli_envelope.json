@@ -1,0 +1,65 @@
+{
+  "ok": true,
+  "http_status": 200,
+  "request_id": "req_cli_0001",
+  "result": {
+    "request_id": "req_cli_0001",
+    "chosen": 0,
+    "latency_ms": 9000,
+    "decision": {"tier": "balanced", "providers": ["exa", "brave"]},
+    "usage": {"cost_micros": 8000, "cache_hit": false, "latency_ms": 9000},
+    "merged": [
+      {
+        "url": "https://servicenow.com/docs/r/api-reference/rest-apis/versions-api.html",
+        "title": "Versions API",
+        "snippet": "PUT /api/sn_cdm/versions/publish marks a snapshot version as published for export and CI/CD use.",
+        "found_by": ["exa", "brave"],
+        "found_in": [{"candidate": 0, "citation": 0}, {"candidate": 1, "citation": 1}],
+        "best_rank": 0
+      },
+      {
+        "url": "https://developer.servicenow.com/dev.do/reference/api/latest/rest/cdm-api",
+        "title": "CDM API",
+        "snippet": "Configuration Data Management REST API overview.",
+        "found_by": ["brave"],
+        "found_in": [{"candidate": 1, "citation": 0}],
+        "best_rank": 0
+      },
+      {
+        "url": "https://community.servicenow.com/cdm-snapshots-thread",
+        "title": "CDM snapshots: how to publish",
+        "snippet": "A community thread on snapshot lifecycle.",
+        "found_by": ["exa"],
+        "found_in": [{"candidate": 0, "citation": 1}],
+        "best_rank": 1
+      }
+    ],
+    "candidates": [
+      {
+        "provider": "exa",
+        "kind": "retrieval",
+        "status": "ok",
+        "chosen": true,
+        "citations": [
+          {"url": "https://servicenow.com/docs/r/api-reference/rest-apis/versions-api.html", "title": "Versions API", "snippet": "PUT /api/sn_cdm/versions/publish marks a snapshot version as published for export and CI/CD use."},
+          {"url": "https://community.servicenow.com/cdm-snapshots-thread", "title": "CDM snapshots: how to publish", "snippet": "A community thread on snapshot lifecycle."}
+        ],
+        "cost_micros": 5000,
+        "latency_ms": 812
+      },
+      {
+        "provider": "brave",
+        "kind": "retrieval",
+        "status": "ok",
+        "chosen": false,
+        "citations": [
+          {"url": "https://developer.servicenow.com/dev.do/reference/api/latest/rest/cdm-api", "title": "CDM API", "snippet": "Configuration Data Management REST API overview."},
+          {"url": "https://servicenow.com/docs/r/api-reference/rest-apis/versions-api.html", "title": "Versions API | ServiceNow", "snippet": "The Versions API provides endpoints to publish a version of a snapshot."}
+        ],
+        "cost_micros": 3000,
+        "latency_ms": 640
+      }
+    ]
+  },
+  "mining": {"recorded": false}
+}

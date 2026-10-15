@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "note": "Reviewed corrections to the catalog derived from the public OB-Code-Websearch rows. Applied by scripts/jevlin_bench/build_public_catalog.py: `recase` rewrites a token in the catalog AND in the gold file (so the gold still passes the judge); `drop` removes a token from the catalog. Each entry says why. Nothing here is tuned to a result: the review happened before any pilot pass, and this file is frozen with the catalog (experiments/FROZEN.sha256).",
+  "reviewed_on": "2026-10-15",
+  "review_method": "scripts/jevlin_bench/review_catalog.py tried to fetch every ticket's gold source page and check token casing against it; SAP community, Workday community and ServiceNow docs pages were not fetchable as raw text (65 of 99 tokens unavailable, 10 exact, 24 absent in a JavaScript shell), so that check could not judge most tickets. The remaining review is the smoke run's retrieved documentation (2 tickets) and a convention read of all 30 token lists, with tokens checked against the ticket text for sample values.",
+  "recase": {
+    "hard_sap_business_partner_relationships": {
+      "A_BPRELATIONSHIP": {
+        "to": "A_BPRelationship",
+        "why": "The public gold writes the entity set in upper case; SAP's API_BUSINESS_PARTNER documentation names it A_BPRelationship, and every one of the nine smoke arms wrote A_BPRelationship after reading the docs. The judge matches case-sensitively, so the published casing can never be satisfied by an agent following the documentation. The other A_ entity sets in this catalog are CamelCase (A_BusinessPartner, A_PurchaseRequisitionHeader), consistent with the correction."
+      }
+    }
+  },
+  "drop": {
+    "hard_sap_simulate_solution_order": [
+      {"token": "CSRF", "why": "A fragment of the header name X-CSRF-Token, split by the tokenizer at the hyphens. HTTP header names are case-insensitive and SAP documentation shows both X-CSRF-Token and x-csrf-token; a correct file written in lower case would fail a case-sensitive match on this fragment."},
+      {"token": "Token", "why": "The other fragment of X-CSRF-Token; same reason."}
+    ]
+  },
+  "kept_after_review": {
+    "hard_sn_filter_ai_prompts": ["Engineering and Acme are sample values, but the ticket text names both, so the agent has them."],
+    "hard_sap_milestone_order_confirmation": ["Fourteen documented field names of the confirmation payload; strict, but every one is a real API field, and the same strictness applies to every arm."],
+    "hard_sn_index_external_documents": ["title, text, everyone, properties, principals, document_id are the documented body fields of the ingestion API."]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "_note": "USD per search for the direct arms, used only to ESTIMATE direct-vendor search cost in analyze.py. Fill from each vendor's current price page on the day of the run and record the date and URL here. Jevlin arms are never priced from this file; the gateway reports what each search cost.",
+  "_filled_on": "",
+  "_sources": {
+    "exa_fast": "",
+    "parallel_fast": "",
+    "perplexity_low": ""
+  },
+  "usd_per_search": {
+    "exa_fast": null,
+    "parallel_fast": null,
+    "perplexity_low": null
+  }
+}

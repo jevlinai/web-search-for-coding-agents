@@ -1,0 +1,175 @@
+{
+  "request_id": "req_fixture_0001",
+  "query": "servicenow configuration data management publish shared snapshot version api",
+  "chosen": 0,
+  "candidates": [
+    {
+      "provider": "exa",
+      "kind": "retrieval",
+      "tier": "core",
+      "citations": [
+        {
+          "url": "https://servicenow.com/docs/r/api-reference/rest-apis/versions-api.html",
+          "domain": "servicenow.com",
+          "title": "Versions API",
+          "snippet": "PUT /api/sn_cdm/versions/publish marks a snapshot version as published for export and CI/CD use.",
+          "rank": 1
+        },
+        {
+          "url": "https://servicenow.com/docs/r/api-reference/rest-apis/cdm-shared-libraries-api.html",
+          "domain": "servicenow.com",
+          "title": "Shared Libraries API",
+          "snippet": "Shared library components and their exports.",
+          "rank": 2
+        },
+        {
+          "url": "https://community.servicenow.com/cdm-snapshots-thread",
+          "domain": "community.servicenow.com",
+          "title": "CDM snapshots: how to publish",
+          "snippet": "A community thread on snapshot lifecycle.",
+          "rank": 3
+        }
+      ],
+      "usage": {},
+      "cost_micros": 5000,
+      "cost_source": "rate_card",
+      "latency": {"ttfb_ms": 400, "total_ms": 812},
+      "status": "ok"
+    },
+    {
+      "provider": "brave",
+      "kind": "retrieval",
+      "tier": "core",
+      "citations": [
+        {
+          "url": "https://developer.servicenow.com/dev.do/reference/api/latest/rest/cdm-api",
+          "domain": "developer.servicenow.com",
+          "title": "CDM API",
+          "snippet": "Configuration Data Management REST API overview.",
+          "rank": 1
+        },
+        {
+          "url": "https://servicenow.com/docs/r/api-reference/rest-apis/versions-api.html",
+          "domain": "servicenow.com",
+          "title": "Versions API | ServiceNow",
+          "snippet": "The Versions API provides endpoints to publish a version of a snapshot. PUT /api/sn_cdm/versions/publish with the snapshot sys_id in the body marks the version available for export and CI/CD use.",
+          "rank": 2
+        },
+        {
+          "url": "https://servicenow.com/docs/r/api-reference/rest-apis/cdm-shared-libraries-api.html",
+          "domain": "servicenow.com",
+          "title": "Shared Libraries API",
+          "snippet": "Short.",
+          "rank": 3
+        }
+      ],
+      "usage": {},
+      "cost_micros": 3000,
+      "cost_source": "rate_card",
+      "latency": {"ttfb_ms": 300, "total_ms": 640},
+      "status": "ok"
+    },
+    {
+      "provider": "serpapi",
+      "kind": "retrieval",
+      "tier": "core",
+      "usage": {},
+      "cost_micros": 0,
+      "latency": {"total_ms": 0},
+      "status": "pending"
+    },
+    {
+      "provider": "tinyfish",
+      "kind": "retrieval",
+      "tier": "core",
+      "usage": {},
+      "cost_micros": 2000,
+      "cost_source": "rate_card",
+      "latency": {"total_ms": 12000},
+      "status": "timeout",
+      "error": "upstream timed out"
+    },
+    {
+      "provider": "you",
+      "kind": "retrieval",
+      "tier": "core",
+      "usage": {},
+      "cost_micros": 0,
+      "latency": {"total_ms": 0},
+      "status": "skipped"
+    }
+  ],
+  "signals": {
+    "referee": [],
+    "consensus": {"agreement_ratio": 0.5, "contested": false},
+    "ranking": []
+  },
+  "decision": {
+    "mode": "rank",
+    "tier": "balanced",
+    "provider_set": "fixture-set",
+    "providers": ["exa", "brave", "serpapi", "tinyfish", "you"],
+    "propensity": 1.0,
+    "router_version": "none",
+    "ranker_version": "fallback-heuristic-v1",
+    "requested": true
+  },
+  "usage": {
+    "cost_micros": 10000,
+    "latency_ms": 12040,
+    "cache_hit": false,
+    "deadline_hit": false,
+    "byok": false,
+    "pending": 1
+  },
+  "merged": [
+    {
+      "result_id": "r1",
+      "url": "https://servicenow.com/docs/r/api-reference/rest-apis/versions-api.html",
+      "domain": "servicenow.com",
+      "title": "Versions API",
+      "excerpt": "The Versions API provides endpoints to publish a version of a snapshot. PUT /api/sn_cdm/versions/publish with the snapshot sys_id in the body marks the version available for export and CI/CD use.",
+      "best_rank": 1,
+      "found_by": [{"provider": "exa", "rank": 1}, {"provider": "brave", "rank": 2}]
+    },
+    {
+      "result_id": "r2",
+      "url": "https://servicenow.com/docs/r/api-reference/rest-apis/cdm-shared-libraries-api.html",
+      "domain": "servicenow.com",
+      "title": "Shared Libraries API",
+      "excerpt": "Shared library components and their exports.",
+      "best_rank": 2,
+      "found_by": [{"provider": "exa", "rank": 2}, {"provider": "brave", "rank": 3}]
+    },
+    {
+      "result_id": "r3",
+      "url": "https://developer.servicenow.com/dev.do/reference/api/latest/rest/cdm-api",
+      "domain": "developer.servicenow.com",
+      "title": "CDM API",
+      "excerpt": "Configuration Data Management REST API overview.",
+      "best_rank": 1,
+      "found_by": [{"provider": "brave", "rank": 1}]
+    },
+    {
+      "result_id": "r4",
+      "url": "https://community.servicenow.com/cdm-snapshots-thread",
+      "domain": "community.servicenow.com",
+      "title": "CDM snapshots: how to publish",
+      "excerpt": "A community thread on snapshot lifecycle.",
+      "best_rank": 3,
+      "found_by": [{"provider": "exa", "rank": 3}]
+    }
+  ],
+  "indexes": {
+    "selected": 5,
+    "ok": 2,
+    "pending": 1,
+    "by_provider": [
+      {"provider": "exa", "status": "ok", "results": 3, "latency_ms": 812},
+      {"provider": "brave", "status": "ok", "results": 3, "latency_ms": 640},
+      {"provider": "serpapi", "status": "pending"},
+      {"provider": "tinyfish", "status": "timeout", "latency_ms": 12000},
+      {"provider": "you", "status": "skipped", "reason": "no_credential"}
+    ]
+  }
+}
