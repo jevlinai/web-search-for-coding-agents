@@ -75,7 +75,11 @@ def jevlin_hop_bodies(row: dict[str, Any]) -> list[dict[str, Any]]:
     if not raw_dir:
         return []
     bodies: list[dict[str, Any]] = []
-    hops = Path(raw_dir) / "hops"
+    base = Path(raw_dir)
+    if not base.is_absolute() and not base.is_dir():
+        # The harness records --raw-dir as given, usually relative to the repository root.
+        base = ROOT / base
+    hops = base / "hops"
     if not hops.is_dir():
         return []
     for path in sorted(hops.glob("search-*.response.json")):

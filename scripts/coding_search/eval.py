@@ -90,6 +90,20 @@ def parse_arms(raw: str, *, split: str = "") -> tuple[str, ...]:
     return arms
 
 
+def load_resume_rows(path: Path | None) -> tuple[list[dict[str, Any]], set[tuple[str, str, bool]]]:
+    """Rows of an earlier, interrupted summary that are worth keeping: those without a run error.
+
+    Returns them and the (task id, backend, allow_fetch) keys they cover, so a resumed pass runs only
+    the jobs that are missing or failed at the run level (a model outage, exhausted credits).
+    """
+    if path is None or not path.is_file():
+        return [], set()
+    summary = json.loads(path.read_text())
+    kept = [row for row in summary.get("results") or [] if not row.get("error")]
+    keys = {(str(row["id"]), str(row["search_backend"]), bool(row["allow_fetch"])) for row in kept}
+    return kept, keys
+
+
 def parse_fetch_modes(raw: str) -> tuple[bool, ...]:
     if raw == "on":
         return (True,)
@@ -330,6 +344,18 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Shuffle the (task, backend) job order with this seed so no vendor runs in one block of time.",
     )
+    run.add_argument(
+        "--resume-from",
+        type=Path,
+        default=None,
+        help="An earlier --out file for the same arms and tickets: keep its rows that have no run error, run only the rest.",
+    )
+    run.add_argument(
+        "--abort-after-run-errors",
+        type=int,
+        default=5,
+        help="Stop the pass after this many consecutive run-level failures (model outage, no credits); 0 disables. Sequential mode only.",
+    )
     run.add_argument("--concurrency", type=int, default=1)
     run.add_argument("--dataset", default="", choices=("", "private", "public"), help="Braintrust project: web-coding-private or web-coding-public.")
     run.add_argument(
@@ -450,6 +476,11 @@ def main(argv: list[str] | None = None) -> int:
     ]
     if args.shuffle_seed is not None:
         random.Random(args.shuffle_seed).shuffle(jobs)
+    resumed_rows, done_keys = load_resume_rows(args.resume_from)
+    if done_keys:
+        before = len(jobs)
+        jobs = [job for job in jobs if (job[0].id, job[1], job[2]) not in done_keys]
+        print(f"resume: keeping {len(resumed_rows)} rows from {args.resume_from}; {before - len(jobs)} jobs skipped, {len(jobs)} to run", flush=True)
     workers = max(1, args.concurrency)
     print(
         f"braintrust={'on' if logger else 'off'} experiment={experiment_id} "
@@ -489,9 +520,11 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001
             return failed_arm(task, backend=backend, allow_fetch=allow_fetch, exc=exc)
 
-    results: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = list(resumed_rows)
+    aborted = False
     try:
         if workers == 1:
+            consecutive_errors = 0
             for job in jobs:
                 row = _one(job)
                 results.append(row)
@@ -502,6 +535,15 @@ def main(argv: list[str] | None = None) -> int:
                     row.get("braintrust_permalink") or row.get("error") or "",
                     flush=True,
                 )
+                consecutive_errors = consecutive_errors + 1 if row.get("error") else 0
+                if args.abort_after_run_errors and consecutive_errors >= args.abort_after_run_errors:
+                    print(
+                        f"ABORTING PASS: {consecutive_errors} consecutive run-level failures; "
+                        f"last: {str(row.get('error') or '').splitlines()[0][:200]}",
+                        flush=True,
+                    )
+                    aborted = True
+                    break
         else:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futs = {pool.submit(_one, job): job for job in jobs}
@@ -531,6 +573,10 @@ def main(argv: list[str] | None = None) -> int:
         "concurrency": workers,
         "max_results": args.max_results,
         "shuffle_seed": args.shuffle_seed,
+        "resumed_from": str(args.resume_from) if args.resume_from else None,
+        "resumed_rows": len(resumed_rows),
+        "aborted": aborted,
+        "planned": len(jobs) + len(resumed_rows),
         "raw_dir": str(raw_dir) if raw_dir else None,
         "run_stamp": run_stamp if raw_dir else None,
         "results": results,
