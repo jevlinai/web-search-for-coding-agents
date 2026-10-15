@@ -188,6 +188,20 @@ class Driver(unittest.TestCase):
         self.assertTrue(all(h["error"] for h in row["search_hops"]))
         self.assertFalse(row["passed"])
 
+    def test_resume_reruns_jobs_whose_every_search_failed(self):
+        out = self.root / "out" / "pass-1.json"
+        base = ["--arms", "jevlin_fixture", "--ids", "fixture_sn_publish", "--out", str(out), "--jobs-dir", str(self.root / "out" / "jobs"),
+                "--claude-bin", str(self.fake), "--model", "claude-test", "--abort-after-hop-errors", "0"]
+        with unittest_env(self.env):
+            cc_run.main([*base, "--fixture", str(self.root / "missing-fixture.json")])   # a storm: every search fails
+            first = json.loads(out.read_text())
+            self.assertTrue(all(h["error"] for h in first["results"][0]["search_hops"]))
+            code = cc_run.main([*base, "--fixture", str(FIXTURE), "--resume-from", str(out)])  # the fixture is back
+        summary = json.loads(out.read_text())
+        self.assertEqual(code, 0)
+        self.assertEqual(summary["n"], 1)
+        self.assertTrue(summary["results"][0]["passed"], summary["results"][0]["score"])  # re-run, not kept
+
     def test_no_search_fails_the_judge_with_a_note(self):
         self.mode_file.write_text("no-search")
         code, summary = self._run()

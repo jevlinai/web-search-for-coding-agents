@@ -368,15 +368,24 @@ def main(argv: list[str] | None = None) -> int:
         random.Random(args.seed).shuffle(jobs)
     resumed_rows, done_keys = load_resume_rows(args.resume_from)
     if done_keys:
+        # A job whose every search failed (a gateway storm) was judged on nothing: not done.
+        judged_on_nothing = {(r["id"], r["search_backend"], False) for r in resumed_rows
+                             if r.get("search_hops") and all(h.get("error") for h in r["search_hops"])}
+        resumed_rows = [r for r in resumed_rows if (r["id"], r["search_backend"], False) not in judged_on_nothing]
+        done_keys -= judged_on_nothing
         before = len(jobs)
         jobs = [job for job in jobs if (job[0].id, job[1], False) not in done_keys]
-        print(f"resume: keeping {len(resumed_rows)} rows from {args.resume_from}; {before - len(jobs)} jobs skipped, {len(jobs)} to run", flush=True)
+        print(f"resume: keeping {len(resumed_rows)} rows from {args.resume_from} ({len(judged_on_nothing)} dropped: every search failed); "
+              f"{before - len(jobs)} jobs skipped, {len(jobs)} to run", flush=True)
     print(f"agent=claude-code version={version} model={args.model} arms={arms} n={len(jobs)} seed={args.seed} run_stamp={run_stamp}", flush=True)
 
     results: list[dict[str, Any]] = list(resumed_rows)
     aborted = False
     consecutive = 0
-    hop_errors_in_a_row = 0
+    # Consecutive failed searches, counted per backend family (all Jevlin arms share one gateway
+    # and one account; each direct vendor is its own), so a gateway refusing every call is noticed
+    # even though direct-vendor jobs between them keep succeeding.
+    hop_errors_in_a_row: dict[str, int] = {}
     started = datetime.now(timezone.utc)
     for task, arm in jobs:
         row = run_job(task, arm, args=args, jobs_dir=jobs_dir, claude_bin=args.claude_bin, version=version, fixture=args.fixture, run_stamp=run_stamp)
@@ -390,12 +399,13 @@ def main(argv: list[str] | None = None) -> int:
             aborted = True
             break
         # Failed searches are data for one job; a run of them across jobs is a vendor or gateway
-        # refusing every call (a 429 storm), and every further job would be judged on nothing.
+        # refusing every call (a 429 or 402 storm), and every further job would be judged on nothing.
+        family = "jevlin" if arm.startswith("jevlin") else arm
         for hop in row["search_hops"]:
-            hop_errors_in_a_row = hop_errors_in_a_row + 1 if hop.get("error") else 0
-        if args.abort_after_hop_errors and hop_errors_in_a_row >= args.abort_after_hop_errors:
+            hop_errors_in_a_row[family] = hop_errors_in_a_row.get(family, 0) + 1 if hop.get("error") else 0
+        if args.abort_after_hop_errors and hop_errors_in_a_row.get(family, 0) >= args.abort_after_hop_errors:
             last = next((h.get("error") for h in reversed(row["search_hops"]) if h.get("error")), "")
-            print(f"ABORTING PASS: {hop_errors_in_a_row} consecutive failed searches; last: {str(last)[:200]}", flush=True)
+            print(f"ABORTING PASS: {hop_errors_in_a_row[family]} consecutive failed searches on {family}; last: {str(last)[:200]}", flush=True)
             aborted = True
             break
         args.out.parent.mkdir(parents=True, exist_ok=True)
