@@ -84,6 +84,31 @@ DATASETS_ROOT=datasets PYTHONPATH=scripts .venv/bin/python -m coding_search self
 
 `pilot.sh` refuses to start unless the tree matches `FROZEN.sha256`.
 
+## Agent B: headless Claude Code on the subscription (no API spend)
+
+`scripts/jevlin_bench/cc_run.py` runs the same tickets, arms, budgets, hit
+shape, judge and output schema with **Claude Code itself** as the agent, one
+`claude -p` session per (ticket, arm) under the user's Max login. Each session
+starts with an empty environment (no API key, no `JEVLIN_*`, `--safe-mode`:
+no hooks, skills, CLAUDE.md or MCP) and may run exactly one command,
+`web_search "<query>"`, generated per job; it calls the harness backend for the
+arm (`cc_search.py`), shows the harness's `{backend, query, hits}` shape,
+enforces the 5-search budget and records every hop. The final message is
+judged by the harness. Rows carry an `agent` block (Claude Code version,
+model, session id, turns, API-equivalent cost); raw dumps use the harness
+layout, so `analyze.py` is unchanged.
+
+A spent usage window appears as a Claude Code error; the driver waits
+`--rate-limit-wait` seconds and retries. Rerunning `cc_pilot.sh` resumes.
+
+```bash
+experiments/cc_smoke.sh                 # 2 tickets × 9 arms, one pass
+experiments/cc_pilot.sh                 # 30 × 9 × PASSES, resume-aware
+```
+
+The two agents are separate experiments: never mix `pass-N.json` files from
+`pilot.sh` (API loop) and `cc_pilot.sh` (Claude Code) in one analysis.
+
 ## Smoke (paid, small): 2 tickets × every arm × 1 pass
 
 ```bash
