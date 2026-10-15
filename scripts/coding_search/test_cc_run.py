@@ -171,6 +171,23 @@ class Driver(unittest.TestCase):
         self.assertFalse(row["passed"])
         self.assertIn("claude error", row["error"])
 
+    def test_a_run_of_failed_searches_aborts_the_pass(self):
+        # A missing fixture makes every search of the jevlin_fixture arm raise: a 429 storm stand-in.
+        out = self.root / "out" / "pass-1.json"
+        argv = ["--arms", "jevlin_fixture", "--ids", "fixture_sn_publish", "--out", str(out), "--jobs-dir", str(self.root / "out" / "jobs"),
+                "--claude-bin", str(self.fake), "--fixture", str(self.root / "missing-fixture.json"), "--model", "claude-test",
+                "--abort-after-hop-errors", "2"]
+        with unittest_env(self.env):
+            code = cc_run.main(argv)
+        summary = json.loads(out.read_text())
+        self.assertEqual(code, 1)
+        self.assertTrue(summary["aborted"])
+        row = summary["results"][0]
+        self.assertIsNone(row["error"])  # the job itself ran; its searches failed
+        self.assertEqual(row["search_count"], 2)
+        self.assertTrue(all(h["error"] for h in row["search_hops"]))
+        self.assertFalse(row["passed"])
+
     def test_no_search_fails_the_judge_with_a_note(self):
         self.mode_file.write_text("no-search")
         code, summary = self._run()

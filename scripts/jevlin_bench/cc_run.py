@@ -337,6 +337,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rate-limit-retries", type=int, default=12)
     parser.add_argument("--resume-from", type=Path, default=None)
     parser.add_argument("--abort-after-run-errors", type=int, default=5)
+    parser.add_argument(
+        "--abort-after-hop-errors",
+        type=int,
+        default=12,
+        help="Stop the pass after this many consecutive failed searches across jobs (a vendor or gateway refusing every call, e.g. 429); 0 disables.",
+    )
     parser.add_argument("--claude-bin", default="claude")
     parser.add_argument("--fixture", default=None, help="tests only: merged-response fixture served to the jevlin_fixture arm")
     parser.add_argument("--run-stamp", default="")
@@ -370,14 +376,26 @@ def main(argv: list[str] | None = None) -> int:
     results: list[dict[str, Any]] = list(resumed_rows)
     aborted = False
     consecutive = 0
+    hop_errors_in_a_row = 0
     started = datetime.now(timezone.utc)
     for task, arm in jobs:
         row = run_job(task, arm, args=args, jobs_dir=jobs_dir, claude_bin=args.claude_bin, version=version, fixture=args.fixture, run_stamp=run_stamp)
         results.append(row)
-        print(task.id, row["backend"], "pass" if row["passed"] else "fail", (row.get("error") or "")[:160], flush=True)
+        hop_errs = sum(1 for h in row["search_hops"] if h.get("error"))
+        print(task.id, row["backend"], "pass" if row["passed"] else "fail", (row.get("error") or "")[:160],
+              f"[{hop_errs}/{len(row['search_hops'])} search errors]" if hop_errs else "", flush=True)
         consecutive = consecutive + 1 if row.get("error") else 0
         if args.abort_after_run_errors and consecutive >= args.abort_after_run_errors:
             print(f"ABORTING PASS: {consecutive} consecutive run-level failures; last: {str(row.get('error') or '')[:200]}", flush=True)
+            aborted = True
+            break
+        # Failed searches are data for one job; a run of them across jobs is a vendor or gateway
+        # refusing every call (a 429 storm), and every further job would be judged on nothing.
+        for hop in row["search_hops"]:
+            hop_errors_in_a_row = hop_errors_in_a_row + 1 if hop.get("error") else 0
+        if args.abort_after_hop_errors and hop_errors_in_a_row >= args.abort_after_hop_errors:
+            last = next((h.get("error") for h in reversed(row["search_hops"]) if h.get("error")), "")
+            print(f"ABORTING PASS: {hop_errors_in_a_row} consecutive failed searches; last: {str(last)[:200]}", flush=True)
             aborted = True
             break
         args.out.parent.mkdir(parents=True, exist_ok=True)

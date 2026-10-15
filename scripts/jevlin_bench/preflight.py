@@ -107,6 +107,38 @@ def shadow_check() -> None:
         print("WARNING: the shell exports %s with a different value than .env; the shell's value is in force." % ", ".join(shadowed))
 
 
+def limits_check(*, projected_pass_usd: float = 25.0) -> None:
+    """What the bench account may spend today, against what one pass of fan-out arms costs.
+
+    The router also enforces per-minute and per-hour request buckets that this endpoint does not
+    report; a pass needs on the order of 600 searches an hour across the Jevlin arms. A 429 storm
+    in the run is the symptom of those buckets; the operator raises them in the admin console.
+    """
+    key = (os.environ.get("JEVLIN_API_KEY") or "").strip()
+    url = (os.environ.get("JEVLIN_API_URL") or "https://api.jevlin.ai").strip().rstrip("/") + "/v1/limits"
+    if not key:
+        return
+    try:
+        response = requests.get(url, headers={"Authorization": f"Bearer {key}"}, timeout=30)
+        body = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        print("limits: request failed:", type(exc).__name__)
+        return
+    if response.status_code != 200:
+        print("limits: http=%s %s" % (response.status_code, json.dumps(body)[:200]))
+        return
+    today = body.get("today") or {}
+    ceiling = int(today.get("ceiling_micros") or 0) / 1e6
+    remaining = int(today.get("remaining_micros") or 0) / 1e6
+    spent = int(today.get("spent_micros") or 0) / 1e6
+    print("limits: today's ceiling $%.2f, spent $%.2f, remaining $%.2f" % (ceiling, spent, remaining))
+    if remaining < projected_pass_usd:
+        print("  WARNING: one pass of the Jevlin fan-out arms needs about $%.0f; the account will hit its daily ceiling (402) mid-pass. "
+              "Raise the ceiling for the bench project before running." % projected_pass_usd)
+    print("  NOTE: per-minute and per-hour request caps are not reported here; the pilot needs ~600 Jevlin searches/hour. "
+          "If the smoke or the first jobs show 429s, raise them in the admin console.")
+
+
 def cli_check() -> None:
     exe = (os.environ.get("JEVLIN_BIN") or "").strip()
     if not exe or not os.access(exe, os.X_OK):
@@ -143,6 +175,7 @@ def main() -> int:
     load_environment()
     shadow_check()
     ok = model_check()
+    limits_check()
     tier_checks()
     cli_check()
     print()
