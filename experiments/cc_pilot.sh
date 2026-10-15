@@ -27,7 +27,7 @@ for pass in $(seq 1 "$PASSES"); do
   echo "== pass $pass / $PASSES  model=$MODEL arms=$ARMS max_results=$MAX_RESULTS ${RESUME:+(resuming)}"
   if ! DATASETS_ROOT=datasets PYTHONPATH=scripts "$PY" scripts/jevlin_bench/cc_run.py \
       --arms "$ARMS" --model "$MODEL" --seed "$pass" --max-results "$MAX_RESULTS" \
-      --rate-limit-wait "$RATE_LIMIT_WAIT" --abort-after-run-errors 5 "${RESUME[@]}" \
+      --rate-limit-wait "$RATE_LIMIT_WAIT" --abort-after-run-errors 5 ${RESUME[@]+"${RESUME[@]}"} \
       --out "$OUT" --raw-dir "$OUT_DIR/raw" --jobs-dir "$OUT_DIR/jobs"; then
     echo "pass $pass aborted; stopping. Rerun cc_pilot.sh to resume."
     exit 1

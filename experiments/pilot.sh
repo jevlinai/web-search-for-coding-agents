@@ -31,7 +31,7 @@ for pass in $(seq 1 "$PASSES"); do
     ${MODEL:+--model "$MODEL"} \
     --max-results "$MAX_RESULTS" \
     --shuffle-seed "$pass" --concurrency 1 \
-    --abort-after-run-errors 5 "${RESUME[@]}" \
+    --abort-after-run-errors 5 ${RESUME[@]+"${RESUME[@]}"} \
     --raw-dir "$OUT_DIR/raw" --out "$OUT"
   # A pass that aborted (model outage, no credits) stops the whole run; fix the cause and rerun.
   if "$PY" -c "import json,sys; sys.exit(0 if json.load(open('$OUT')).get('aborted') else 1)"; then
