@@ -154,6 +154,41 @@ def make_order_jev(request, goal):
         return [p for _, p in sorted(zip(sc, ps), key=lambda t: (-round(t[0], 2), -len(t[1]["listings"]), min(l["rank"] for l in t[1]["listings"])))]
     return order
 
+# Query-aware orderings (added 2026-10-16 after the first rescore): no model call. A page is scored
+# by how many of the *query's own* tokens appear in its title, snippets and excerpts — the signal
+# every vote/rank rule above ignores — and ties keep round-robin order. Two token sets: the query's
+# identifiers only (paths, camelCase, snake_case, backticks), or identifiers plus every word of four
+# letters or more that is not a stop word. A query with no usable token falls back to round-robin.
+STOP = {"what", "with", "from", "that", "this", "does", "into", "when", "which", "where", "using", "about", "your", "have", "been",
+        "will", "should", "would", "could", "their", "there", "them", "then", "than", "also", "only", "each", "such", "other",
+        "some", "more", "most", "very", "just", "like", "need", "want", "make", "made", "find", "show", "between", "through",
+        "after", "before", "while", "because", "example", "examples", "documentation", "docs", "guide", "tutorial", "reference"}
+WORD = re.compile(r"[A-Za-z][A-Za-z0-9_.\-/]{3,}")
+
+def query_tokens(query, idents_only):
+    # whole matches, not findall's group captures (IDENT has a capturing group, so findall would return
+    # the path segment or an empty string instead of the identifier)
+    toks = [m.group(0).lower().strip("`") for m in IDENT.finditer(query)]
+    if not idents_only:
+        toks += [w.lower() for w in WORD.findall(query) if len(w) >= 4 and w.lower() not in STOP]
+    return list(dict.fromkeys(t for t in toks if len(t) >= 3))
+
+def page_text(p):
+    return " ".join([p["title"], *[l["snippet"] for l in p["listings"]], *[e for l in p["listings"] for e in l["excerpts"]]]).lower()
+
+def make_order_tokens(query, idents_only):
+    toks = query_tokens(query, idents_only)
+    def order(ps):
+        if not ps or not toks:
+            return order_roundrobin(ps)
+        rr = order_roundrobin(ps)
+        pos = {id(p): i for i, p in enumerate(rr)}
+        texts = {id(p): page_text(p) for p in ps}
+        return sorted(ps, key=lambda p: (-sum(1 for t in toks if t in texts[id(p)]), pos[id(p)]))
+    return order
+
+QUERY_ORDERINGS = {"query-idents": True, "query-tokens": False}   # name -> idents_only
+
 # ---------------------------------------------------------------- excerpt rules
 
 IDENT = re.compile(r"(/[A-Za-z0-9_.\-{}]+){2,}|[A-Za-z]+[A-Z][A-Za-z0-9]+|[A-Za-z0-9]+(?:_[A-Za-z0-9]+){1,}|`[^`]+`")
@@ -185,13 +220,21 @@ def job_scores(row, gold, required, goal="", use_jev=False):
     queries = [h.get("query") or "" for h in row.get("search_hops") or []]
     out = {}
     orderings = dict(ORDERINGS)
+    for qname in QUERY_ORDERINGS:
+        orderings[qname] = None
     if use_jev:
         orderings["jev score"] = None
     for oname, order in orderings.items():
         for ename, excerpt in EXCERPTS.items():
             seen = tok = False
             for bi, body in enumerate(bodies):
-                o = order or make_order_jev(queries[bi] if bi < len(queries) else "", goal)
+                q = queries[bi] if bi < len(queries) else ""
+                if order is not None:
+                    o = order
+                elif oname == "jev score":
+                    o = make_order_jev(q, goal)
+                else:
+                    o = make_order_tokens(q, QUERY_ORDERINGS[oname])
                 for p in o(pages(body))[:TOP]:
                     if gold_hit(p["url"], gold):
                         seen = True
@@ -205,6 +248,7 @@ def job_scores(row, gold, required, goal="", use_jev=False):
 
 
 def main(argv=None) -> int:
+    global _jev_cache, _jev_cache_path, TOP
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("passes", nargs="+", type=Path)
     ap.add_argument("--catalog", type=Path, required=True)
@@ -212,8 +256,9 @@ def main(argv=None) -> int:
     ap.add_argument("--arms", default=",".join(sorted(FANOUT_ARMS)))
     ap.add_argument("--jev", action="store_true", help="add a fifth ordering scored by TypeSafe Jev (needs a key)")
     ap.add_argument("--jev-cache", type=Path, default=Path("rescore-jev-cache.json"))
+    ap.add_argument("--top", type=int, default=TOP, help="hits shown per search (the harness shows 8); the window the gold page must land in")
     a = ap.parse_args(argv)
-    global _jev_cache, _jev_cache_path
+    TOP = a.top
     if a.jev:
         if not jev_key():
             sys.exit("--jev needs JEV_API_KEY (or ~/.config/search-bench/typesafe.key)")
@@ -237,9 +282,9 @@ def main(argv=None) -> int:
     lines = []
     for arm in sorted(per):
         rows = per[arm]; n = len(rows)
-        lines += [f"\n### {arm} (n = {n}; gold retrieved by some provider in {100*sum(upstream[arm])/n:.0f}% of jobs)\n",
-                  "| ordering | excerpt | gold in top-8 | required token in a top-8 excerpt |", "|---|---|---|---|"]
-        for oname in list(ORDERINGS) + (["jev score"] if a.jev else []):
+        lines += [f"\n### {arm} (n = {n}; gold retrieved by some provider in {100*sum(upstream[arm])/n:.0f}% of jobs; window = top-{TOP})\n",
+                  f"| ordering | excerpt | gold in top-{TOP} | required token in a top-{TOP} excerpt |", "|---|---|---|---|"]
+        for oname in list(ORDERINGS) + list(QUERY_ORDERINGS) + (["jev score"] if a.jev else []):
             for ename in EXCERPTS:
                 seen = sum(r[(oname, ename)][0] for r in rows); tok = sum(r[(oname, ename)][1] for r in rows)
                 lines.append(f"| {oname} | {ename} | {100*seen/n:.0f}% | {100*tok/n:.0f}% |")
