@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prepare the jevlin_cli arm: a released jevlin binary and a benchmark-only client config.
 #
-#   experiments/jevlin-cli/setup.sh release [TAG]                  # installs the published release (default v0.2.0),
+#   experiments/jevlin-cli/setup.sh release [TAG]                  # installs the published release (default v0.4.2),
 #                                                                  # checksum-verified, into runs/bin/jevlin — what users run
 #   experiments/jevlin-cli/setup.sh build  [JEVLIN_GO_DIR] [REF]   # builds REF from source instead (no release asset)
 #   experiments/jevlin-cli/setup.sh config                         # writes runs/jevlin-cli/jevlin.toml + state (mining off)
@@ -18,7 +18,7 @@ HOME_DIR="$ROOT/runs/jevlin-cli"
 
 case "${1:-}" in
   release)
-    TAG="${2:-v0.2.0}"
+    TAG="${2:-v0.4.2}"
     VER="${TAG#v}"
     OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
     ARCH="$(uname -m)"; case "$ARCH" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; esac
@@ -62,12 +62,22 @@ upstream = "${JEVLIN_API_URL%/}"
 # requires a [mining] block naming the rewards server, which a benchmark has no business touching.
 [miner]
 enabled      = false
+# Where searches go. Unset, the client falls back to the [[provider]] upstream above; named here so
+# the bench host does not depend on that fallback. (A config written by \`jevlin setup\` names
+# api.jevlin.ai; this one is not written by setup.)
+router_url   = "${JEVLIN_API_URL%/}"
 intake_dir   = "$HOME_DIR/intake"
 sessions_dir = "$HOME_DIR/sessions"
 
 [mining]
 state_dir = "$HOME_DIR/state"
 spool_dir = "$HOME_DIR/spool"
+
+# From v0.4.1 a native install replaces itself with a newer release at its daily check unless told
+# otherwise. The bench binary must not change between passes, so the check is off. (A client older
+# than v0.4.0 refuses this table, as it refuses any key it does not know.)
+[update]
+mode = "off"
 EOF
     printf '{"version":1,"enabled":false}\n' > "$HOME_DIR/state/mining_decision.json"
     chmod 600 "$HOME_DIR/state/mining_decision.json"
