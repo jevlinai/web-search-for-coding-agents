@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from coding_search import eval as harness_eval, search
+from coding_search import eval as harness_eval, jevlin, search
 from coding_search.tasks import CodingTask
 from coding_search.test_jevlin_e2e import GOLD, MERGED, FakeClient
 
@@ -86,6 +86,34 @@ class AnalyzeFromRawDumps(unittest.TestCase):
                 self.assertEqual(stats["oracle_single_provider_retrieval"], 1.0)
                 self.assertEqual(stats["providers_seen"], ["brave", "exa", "serpapi", "tinyfish", "you"])
                 self.assertEqual(stats["hop_errors"], 0)
+
+
+class AnalyzeSplitArm(unittest.TestCase):
+    def test_split_numbers_are_recomputed_from_the_hits_each_search_showed(self):
+        def hit(i, compact):
+            return {"url": f"https://p.test/{i}", "title": f"Page {i}", "snippet": "s" * 20, **({"compact": True} if compact else {})}
+
+        def row(arm, searches):
+            return {"id": "t1", "search_backend": arm, "backend": f"{arm}+search", "passed": True, "search_count": len(searches),
+                    "metrics": {}, "search_hops": [{"hits": hits, "hit_urls": [h["url"] for h in hits]} for hits in searches]}
+
+        full = [hit(i, i >= 10) for i in range(40)]
+        short = [hit(i, False) for i in range(10)]  # a short list, or an answer from the cache of a plain search
+        rows = [row("jevlin_balanced_split", [full, short]), row("jevlin_balanced", [short])]
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "pass-1.json"
+            summary.write_text(json.dumps({"max_results": 8, "results": rows}))
+            report_path = Path(tmp) / "report.json"
+            with patch("sys.stdout"):
+                analyze.main(["--out", str(summary), "--json", str(report_path)])
+            report = json.loads(report_path.read_text())
+        split, plain = report["jevlin_balanced_split"], report["jevlin_balanced"]
+        self.assertEqual((split["split_entries_per_search"], split["split_compact_per_search"]), (25.0, 15.0))
+        self.assertEqual(split["split_share_searches_with_compact"], 0.5)
+        expected = [jevlin.split_stats(jevlin.shown_hits(h))["jevlin_split_chars_shown"] for h in (full, short)]
+        self.assertEqual(split["split_chars_per_search"], sum(expected) / 2)
+        for key in ("split_entries_per_search", "split_compact_per_search", "split_chars_per_search", "split_share_searches_with_compact"):
+            self.assertIsNone(plain[key], key)
 
 
 if __name__ == "__main__":

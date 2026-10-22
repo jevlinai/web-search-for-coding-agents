@@ -14,6 +14,7 @@ from typing import Any
 
 from .agent import DEFAULT_MODEL, run_agent
 from .env import datasets_root, default_model, llm_transport, load_environment, make_llm_client
+from .jevlin import CC_ONLY
 from .judge import extract_code, hop_retrieved_text, hop_urls, score_needles
 from .rawlog import new_run_stamp, parse_run_stamp, write_arm_raw
 from .search import (
@@ -71,6 +72,12 @@ def parse_arms(raw: str, *, split: str = "") -> tuple[str, ...]:
     if unknown:
         known = ", ".join(sorted(set(resolve_backend(name) for name in BACKENDS)))
         raise SystemExit(f"unknown backend {unknown}; expected {known}")
+    cc_only = [item for item in arms if item in CC_ONLY]
+    if cc_only:
+        raise SystemExit(
+            f"{cc_only} runs only under scripts/jevlin_bench/cc_run.py: it shows the model the router's whole "
+            "merged list, which needs that driver's rendering and its router probe"
+        )
     if split == "search-only":
         allowed = set(SEARCH_ONLY_BACKENDS)
         label = "search-only"

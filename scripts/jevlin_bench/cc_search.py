@@ -4,7 +4,9 @@
 The driver (cc_run.py) writes a tiny shell script per job that sets CC_* and execs this file
 with the harness's Python. The session sees only this command's stdout, which is the same shape
 the harness's `web_search` tool returns: {"backend", "query", "hits": [{url, title, snippet}]}
-plus "error" when the search failed. Every call is recorded as a hop file the driver turns into
+plus "error" when the search failed. The one exception is `jevlin_balanced_split`: its `hits` is
+the router's whole merged list, the long entries as the same objects and the compact tail as
+one-line strings (`jevlin.shown_hits`). Every call is recorded as a hop file the driver turns into
 the harness's search_hops and raw dumps, so the judge's grounding check and analyze.py work
 unchanged.
 
@@ -13,7 +15,9 @@ Environment set by the generated script:
   CC_ARM           backend name (a harness vendor or a Jevlin arm)
   CC_HOP_DIR       where hop files go (search-01.json, search-02.json, ...)
   CC_MAX_SEARCHES  budget; the (N+1)th call answers "search budget exhausted; answer now"
-  CC_MAX_RESULTS   hits shown per search (8, like every vendor in the harness)
+  CC_MAX_RESULTS   hits shown per search (8, like every vendor in the harness); sent to the router
+                   as max_results by every arm, and the cut for every arm but jevlin_balanced_split,
+                   which shows the router's whole merged list
   CC_FIXTURE_PATH  tests only: with CC_ARM=jevlin_fixture, serve this merged-response fixture
 """
 
@@ -28,6 +32,7 @@ from pathlib import Path
 ROOT = Path(os.environ.get("CC_ROOT") or Path(__file__).resolve().parents[2])
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from coding_search import jevlin  # noqa: E402
 from coding_search import search as harness_search  # noqa: E402
 from coding_search.env import load_environment  # noqa: E402
 
@@ -45,8 +50,6 @@ def emit(payload: dict) -> None:
 
 def run_search(arm: str, query: str, max_results: int) -> tuple[list[dict], str | None, dict]:
     if arm == "jevlin_fixture":
-        from coding_search import jevlin
-
         payload = json.loads(Path(os.environ["CC_FIXTURE_PATH"]).read_text())
         hits = jevlin.present_merged(payload, max_results=max_results)
         meta = {
@@ -99,7 +102,12 @@ def main(argv: list[str]) -> int:
     hop = {
         "query": query,
         "backend": arm,
-        "hits": [{"url": str(h.get("url") or ""), "title": str(h.get("title") or ""), "snippet": str(h.get("snippet") or "")[:1200]} for h in hits],
+        "hits": [
+            {"url": str(h.get("url") or ""), "title": str(h.get("title") or ""), "snippet": str(h.get("snippet") or "")[:1200],
+             # the split arm's compact entries keep their flag, so the hop records which ones the model saw as one line
+             **({"compact": True} if jevlin.is_compact(h) else {})}
+            for h in hits
+        ],
         "error": error,
         "latency_ms": latency_ms,
         "n_hits": stats["n_hits"],
@@ -119,8 +127,14 @@ def main(argv: list[str]) -> int:
         "response": meta.get("response") if isinstance(meta.get("response"), dict) else None,
         "vendor_meta": {k: v for k, v in meta.items() if k not in ("request", "response")},
     }
+    # What the model reads. For every arm but the split one this is the hop's hits unchanged; the split
+    # arm's compact entries become one line each, in the router's order (jevlin.shown_hits). For that
+    # arm the hop also keeps the list as shown, because it differs from the hits it was made from.
+    shown_list = jevlin.shown_hits(hop["hits"])
+    if shown_list != hop["hits"]:
+        hop["shown_hits"] = shown_list
     (hop_dir / f"search-{seq:02d}.json").write_text(json.dumps(hop, ensure_ascii=False, default=str))
-    shown: dict = {"backend": arm, "query": query, "hits": hop["hits"]}
+    shown: dict = {"backend": arm, "query": query, "hits": shown_list}
     if error:
         shown["error"] = error
     emit(shown)

@@ -22,6 +22,13 @@ Per arm, across passes:
   oracle                Jevlin fan-out arms only: tasks where at least one single
                         upstream provider's own results contained a gold URL —
                         the best-single-provider-in-hindsight bound on retrieval
+  split_*               jevlin_balanced_split only (null for every other arm), from the
+                        hits each search showed the model: entries per search, compact
+                        (one-line) entries per search, characters of the `hits` JSON the
+                        model received, and the share of searches that showed any compact
+                        entry. That last one is the validity signal: a split search whose
+                        answer held none was a short list or was answered from the cache
+                        of a plain search
 
 Usage:
   python3 scripts/jevlin_bench/analyze.py --out runs/pass-*.json --raw-dir runs/web-coding \
@@ -42,6 +49,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from coding_search import jevlin  # noqa: E402
 from coding_search.judge import url_was_observed  # noqa: E402
 
 NOT_CALLED = {"skipped"}
@@ -171,6 +179,10 @@ def main(argv: list[str] | None = None) -> int:
                 "has_gold": bool(gold_urls),
                 "leak": bool(row.get("query_contained_gold_token")),
             }
+            if jevlin.is_split_arm(arm):
+                # What each search put in front of the model, recomputed from the hits the hop kept
+                # (compact entries carry their flag): the same function the arm's own metadata uses.
+                entry["split_stats"] = [jevlin.split_stats(jevlin.shown_hits(hop.get("hits") or [])) for hop in hops]
             if arm.startswith("jevlin"):
                 entry.update(jevlin_measures(jevlin_hop_bodies(row), gold_urls, max_results))
                 entry["cost_usd"] = entry["cost_micros"] / 1_000_000
@@ -193,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
         costs = [r["cost_usd"] for r in rows if r.get("cost_usd") is not None]
         gold_rows = [r for r in rows if r["has_gold"]]
         jevlin_rows = [r for r in rows if "oracle_hit" in r]
+        split_searches = [stats for r in rows for stats in r.get("split_stats", [])]
         report[arm] = {
             "rows": len(rows),
             "passes": len(by_pass),
@@ -217,6 +230,10 @@ def main(argv: list[str] | None = None) -> int:
             "leak_flagged": sum(r["leak"] for r in rows),
             "oracle_single_provider_retrieval": (sum(r["oracle_hit"] for r in jevlin_rows) / len(jevlin_rows)) if jevlin_rows else None,
             "providers_seen": sorted({p for r in jevlin_rows for p in r.get("providers", [])}) if jevlin_rows else None,
+            "split_entries_per_search": statistics.mean(s["jevlin_split_entries_shown"] for s in split_searches) if split_searches else None,
+            "split_compact_per_search": statistics.mean(s["jevlin_split_compact_shown"] for s in split_searches) if split_searches else None,
+            "split_chars_per_search": statistics.mean(s["jevlin_split_chars_shown"] for s in split_searches) if split_searches else None,
+            "split_share_searches_with_compact": (sum(1 for s in split_searches if s["jevlin_split_compact_shown"] > 0) / len(split_searches)) if split_searches else None,
         }
 
     def fmt(value: Any, kind: str = "") -> str:

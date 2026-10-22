@@ -14,6 +14,7 @@ limitations are written up in the design repository
 | `perplexity_low`, `exa_fast`, `parallel_fast` | A: direct vendors | the harness's own runners, unchanged |
 | `jevlin_fast` | A | tier `fast`, the account's default provider set, Jevlin's merged order |
 | `jevlin_balanced` | A, and D over HTTP | tier `balanced`, default set, merged order |
+| `jevlin_balanced_split` | excerpt_mode test (Claude Code driver only) | tier `balanced` plus `excerpt_mode:"split"`; the router's whole merged list, not the top N |
 | `jevlin_max` | A, only if `/statusz` shows it differs from balanced | tier `max` |
 | `jevlin_single` | B-A | one provider (`JEVLIN_SINGLE_PROVIDER`, default `exa`) through Jevlin, its own order |
 | `jevlin_fanout_raw` | B-B | pinned set (`JEVLIN_PROVIDERS`), round-robin, exact-URL dedup |
@@ -21,7 +22,17 @@ limitations are written up in the design repository
 | `jevlin_cli` | B-D | `jevlin search --stdin`: the client's own merge, account defaults |
 
 Every arm shows the model at most `--max-results` hits (default 8) of
-url / title / snippet. `--shuffle-seed` randomises the (ticket, arm) order so
+url / title / snippet, except `jevlin_balanced_split`, which shows the router's
+whole merged list (up to 40: the top 10 as hits, the compact tail as one line
+each, "title | url | text"). That is a deliberate internal-adaptation deviation
+from the top-N rule, stamped into every split job's notes. The arm runs only
+under `scripts/jevlin_bench/cc_run.py`, which first probes the router for
+`excerpt_mode` (`scripts/jevlin_bench/split_preflight.py`: `excerpt_mode:"split"`
+on tier `fast`, which a router with the field refuses before any provider is
+called) and exits 2 unless the refusal is the one a router with the field gives;
+`coding_search run` refuses the arm. It is not in the default `ARMS`.
+
+`--shuffle-seed` randomises the (ticket, arm) order so
 no arm runs in one block of time; use a different seed per pass.
 
 ## Host preparation (Linux run server, not the router's host)

@@ -16,6 +16,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from coding_search.tasks import CodingTask
 from coding_search.test_jevlin_e2e import GOLD
@@ -25,6 +26,8 @@ ROOT = HERE.parents[1]
 FIXTURE = HERE / "testdata" / "jevlin" / "merged_response.json"
 sys.path.insert(0, str(ROOT / "scripts" / "jevlin_bench"))
 import cc_run  # noqa: E402
+import split_preflight  # noqa: E402
+from coding_search import jevlin  # noqa: E402
 
 FAKE_CLAUDE = r'''#!/bin/bash
 # Fake claude: find the wrapper in --allowedTools "Bash(<path> *)", search once, answer with the gold file.
@@ -211,6 +214,27 @@ class Driver(unittest.TestCase):
         self.assertIsNone(row["error"])
         self.assertIn("no search was made", row["notes"])
         self.assertEqual(row["search_count"], 0)
+
+    def _run_arm_that_makes_no_search(self, arm: str) -> dict:
+        """One real job through the driver for `arm`, with the session faked so that it answers without calling
+        the search tool: no router is called, whatever the arm. Any request would fail loudly."""
+        self.mode_file.write_text("no-search")
+        out = self.root / "out" / "pass-1.json"
+        argv = ["--arms", arm, "--ids", "fixture_sn_publish", "--seed", "1", "--out", str(out), "--raw-dir", str(self.root / "out" / "raw"),
+                "--jobs-dir", str(self.root / "out" / "jobs"), "--claude-bin", str(self.fake), "--rate-limit-wait", "0", "--model", "claude-test"]
+        refusal = AssertionError("the test suite must not reach the network")
+        with unittest_env(self.env), mock.patch.object(split_preflight, "probe", return_value=(True, "accepted")), \
+                mock.patch("coding_search.search.vendor_call", side_effect=refusal), mock.patch("requests.sessions.Session.request", side_effect=refusal):
+            self.assertEqual(cc_run.main(argv), 0)
+        return json.loads(out.read_text())["results"][0]
+
+    def test_every_split_job_carries_the_deviation_label_and_no_other_arm_does(self):
+        row = self._run_arm_that_makes_no_search("jevlin_balanced_split")
+        self.assertIn(jevlin.SPLIT_DEVIATION, row["notes"])
+        self.assertIn("internal adaptation", jevlin.SPLIT_DEVIATION)
+        self.assertIn("top-N", jevlin.SPLIT_DEVIATION)
+        self.assertEqual(row["search_backend"], "jevlin_balanced_split")
+        self.assertNotIn(jevlin.SPLIT_DEVIATION, self._run_arm_that_makes_no_search("jevlin_balanced")["notes"])
 
     def test_budget_is_enforced_by_the_wrapper(self):
         hop_dir = self.root / "hops"

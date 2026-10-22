@@ -9,7 +9,8 @@ in the job":
   post-merge recall  the gateway's merged[] contained a gold URL (fan-out arms)
   top-16 visible     a gold URL within the first 16 of the list the arm presents (recomputed with the
                      arm's own presentation: merged order, or the raw round-robin for jevlin_fanout_raw)
-  top-8 visible      a gold URL among the hits the model was shown
+  top-8 visible      a gold URL among the hits the model was shown (for jevlin_balanced_split that
+                     is the router's whole merged list, up to 40 entries, not the first 8)
   completion         the judge passed the job
 
 then completion conditional on top-8 visibility, both ways. URL matching is the judge's own
@@ -110,6 +111,9 @@ def main(argv=None) -> int:
         cu = f"{100 * sum(r['completion'] for r in unseen) / len(unseen):.0f}% ({len(unseen)})" if unseen else "–"
         lines.append(f"| {arm} | {len(rows)} | {pct('upstream')} | {pct('merged')} | {pct('top16')} | {pct('top8')} | {pct('completion')} | {cs} | {cu} |")
     table = "\n".join(lines)
+    if any(jevlin.is_split_arm(arm) for arm in per_arm):
+        table += ("\n\nNote: for jevlin_balanced_split the 'top-8 visible' column is every entry the model was shown "
+                  "(the router's whole merged list), not the first 8; compare it with the other arms' column accordingly.")
     print(table)
     if args.md:
         args.md.write_text(table + "\n")

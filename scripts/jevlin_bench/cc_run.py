@@ -20,6 +20,12 @@ A subscription window that is exhausted shows up as a Claude Code error; the dri
 --rate-limit-wait seconds and retries the same job up to --rate-limit-retries times before
 counting it as a run-level failure. --resume-from and --abort-after-run-errors behave as in
 `coding_search run`.
+
+One arm departs from the hit cut on purpose: `jevlin_balanced_split` shows the router's whole
+merged list (up to 40 entries, the compact tail as one line each) instead of the first
+--max-results, an internal-adaptation deviation from the upstream top-N rule that every split job
+records in its notes (`jevlin.SPLIT_DEVIATION`). A pass that includes it first probes the router
+for `excerpt_mode` and refuses to start if the router does not confirm it (exit 2).
 """
 
 from __future__ import annotations
@@ -43,8 +49,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import split_preflight  # noqa: E402
 from coding_search import agent as harness_agent  # noqa: E402
-from coding_search import rawlog  # noqa: E402
+from coding_search import jevlin, rawlog  # noqa: E402
 from coding_search.env import load_environment  # noqa: E402
 from coding_search.eval import load_resume_rows  # noqa: E402
 from coding_search.judge import extract_code, hop_retrieved_text, hop_urls, score_needles  # noqa: E402
@@ -253,6 +260,8 @@ def run_job(task, arm: str, *, args, jobs_dir: Path, claude_bin: str, version: s
         notes.append("search budget exhausted")
     if not hops:
         notes.append("no search was made")
+    if jevlin.is_split_arm(arm):
+        notes.append(jevlin.SPLIT_DEVIATION)
     denials = result.get("permission_denials") if isinstance(result.get("permission_denials"), list) else []
     for denial in denials[:10]:
         notes.append(f"tool denied: {json.dumps(denial, default=str)[:160]}")
@@ -285,7 +294,7 @@ def run_job(task, arm: str, *, args, jobs_dir: Path, claude_bin: str, version: s
         "fetch_count": 0,
         "queries": [str(h.get("query") or "") for h in hops],
         "fetch_urls": [],
-        "search_hops": [{k: v for k, v in h.items() if k not in ("request", "response", "vendor_meta")} for h in hops],
+        "search_hops": [{k: v for k, v in h.items() if k not in ("request", "response", "vendor_meta", "shown_hits")} for h in hops],
         "fetch_hops": [],
         "passed": bool(score.passed) and not run_error,
         "score": score.to_dict() if not run_error else {"passed": False, "compiled": False, "output": "RUN_ERROR", "notes": [run_error]},
@@ -360,6 +369,12 @@ def main(argv: list[str] | None = None) -> int:
     ids = [item.strip() for item in args.ids.split(",") if item.strip()]
     tasks = load_tasks(ids=ids or None)
     arms = [resolve_backend(item.strip()) for item in args.arms.split(",") if item.strip()]
+    # The split arm sends a request field a router may not know: probe once (a request the router
+    # refuses before any provider is called) before any session starts.
+    refusal = split_preflight.require_split_router(arms)
+    if refusal:
+        print(refusal, flush=True)
+        return 2
     run_stamp = rawlog.parse_run_stamp(args.run_stamp) or rawlog.new_run_stamp()
     jobs_dir = args.jobs_dir
     version = claude_version(args.claude_bin)
